@@ -28,15 +28,30 @@ class RTResource(object):
         """POST to the server"""
         return self.request('POST', path, payload, headers)
 
-    def request(self, method, path=None, payload=None, headers=None):
+    def request(self, method, path=None, payload=None, headers=None, binary=False, strip_binary=False):
         """Make request to server"""
+
+        #if sub attachment we get back binary data
+        if re.search('\/attachments\/', path):
+            logging.debug('found attachment')
+            if path.endswith('content'):
+                logging.debug('found attachment CONTENT')
+                binary = True
+            else:
+                logging.debug('found attachment STRIP')
+                strip_binary = True
+
         headers = headers or dict()
-        headers.setdefault('Accept', 'text/plain')
+        #headers.setdefault('Accept', 'text/plain')
+        #headers.setdefault('Accept', 'application/vnd.ms-excel')
+        #headers.setdefault('Accept', 'application/pdf')
+        #headers={'Content-Type': 'application/pdf'}
+        #header = {'Content-Type': 'application/octet-stream'}
         if payload:
             payload = forms.encode(payload, headers)
         self.logger.debug('{0} {1}'.format(method, path))
         self.logger.debug(headers)
-        self.logger.debug('%r' % payload)
+
         req = Request(
             url=self.auth.url + path,
             data=payload,
@@ -46,7 +61,20 @@ class RTResource(object):
             response = self.auth.open(req)
         except HTTPError as e:
             response = e
-        return self.response_cls(req, response)
+
+        if binary:
+            #PDF's don't react well to stripping header -- fine without it
+            if headers['Content-Type'].endswith('pdf'):
+                return response.read()
+            #Per http://requesttracker.wikia.com/wiki/REST
+            #So to get the original content you still have to strip the first 2 lines of the response.
+            return '\n'.join(response.read().splitlines()[2:])
+        elif strip_binary:
+            return response.read().split('Content')[0]
+        else:
+            data = response.read()
+            status = re.split('\n', data, 1)[0]
+            return re.split('\n', data, 1)[1]
 
     @classmethod
     def from_rtrc(cls, auth, filename=None, **kwargs):
@@ -63,14 +91,15 @@ class RTResource(object):
         except (KeyError, IOError):
             raise errors.RTBadConfiguration
 
-
 class RTResponse(object):
     """Represents the REST response from server"""
     def __init__(self, request, response):
         self.headers = response.headers
         """Headers as dict"""
 
+        logging.debug('r>>>>>>>', response.read())
         self.body = response.read()
+        logging.debug('b>>>>>>>', self.body)
         """Request Body"""
 
         self.status_int = response.code
