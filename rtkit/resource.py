@@ -63,12 +63,7 @@ class RTResource(object):
             response = e
 
         if binary:
-            #PDF's don't react well to stripping header -- fine without it
-            if headers['Content-Type'].endswith('pdf'):
-                return response.read()
-            #Per http://requesttracker.wikia.com/wiki/REST
-            #So to get the original content you still have to strip the first 2 lines of the response.
-            return '\n'.join(response.read().splitlines()[2:])
+            return response
         elif strip_binary:
             return response.read().split('Content')[0]
         else:
